@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spinning Circles</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="controls">
+        <button id="recordButton">Record</button>
+        <button id="playButton" disabled>Play</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const recordButton = document.getElementById('recordButton');
+        const playButton = document.getElementById('playButton');
+
+        // Set canvas size
+        canvas.width = 600;
+        canvas.height = 600;
+
+        // Number of circles
+        const numCircles = 8;
+        let rotation = 0;
+
+        // Array of colors for the circles
+        const colors = [
+            '#FF0000', // Red
+            '#00FF00', // Green
+            '#0000FF', // Blue
+            '#FFA500', // Orange
+            '#800080', // Purple
+            '#FFC0CB', // Pink
+            '#00FFFF', // Cyan
+            '#FFD700'  // Gold
+        ];
+
+        // Frequencies for each color (in Hz)
+        const frequencies = [
+            440, // Red - A4
+            494, // Green - B4
+            523, // Blue - C5
+            587, // Orange - D5
+            659, // Purple - E5
+            698, // Pink - F5
+            784, // Cyan - G5
+            880   // Gold - A5
+        ];
+
+        // Audio context for sound generation
+        let audioContext = null;
+        let audioContextInitialized = false;
+
+        // Keep track of active oscillators and their start times
+        const activeOscillators = new Array(numCircles).fill(null);
+        const startTimes = new Array(numCircles).fill(0);
+        let lastHoveredCircle = -1;
+
+        // Sound duration in seconds
+        const SOUND_DURATION = 0.25;
+
+        // Recording functionality
+        let isRecording = false;
+        let recordedSequence = [];
+        let recordingStartTime = 0;
+
+        // Add cursor position tracking
+        let cursorX = 0;
+        let cursorY = 0;
+
+        // Track cursor position
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            cursorX = event.clientX - rect.left;
+            cursorY = event.clientY - rect.top;
+        });
+
+        // Initialize audio context on first user interaction
+        function initAudioContext() {
+            if (!audioContextInitialized) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContextInitialized = true;
+            }
+        }
+
+        function playSound(frequency, index) {
+            // Initialize audio context if needed
+            initAudioContext();
+
+            // Stop any existing sound for this circle
+            if (activeOscillators[index]) {
+                stopSound(index);
+            }
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            
+            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+            
+            oscillator.start();
+            activeOscillators[index] = oscillator;
+            startTimes[index] = audioContext.currentTime;
+
+            // Stop the sound after SOUND_DURATION seconds
+            setTimeout(() => {
+                if (activeOscillators[index] === oscillator) {
+                    stopSound(index);
+                }
+            }, SOUND_DURATION * 1000);
+
+            // Record the sound if recording is active
+            if (isRecording) {
+                const timestamp = audioContext.currentTime - recordingStartTime;
+                recordedSequence.push({ index, timestamp });
+            }
+        }
+
+        function stopSound(index) {
+            if (activeOscillators[index]) {
+                try {
+                    const oscillator = activeOscillators[index];
+                    const gainNode = oscillator.gain;
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                    setTimeout(() => {
+                        if (activeOscillators[index] === oscillator) {
+                            oscillator.stop();
+                            activeOscillators[index] = null;
+                            startTimes[index] = 0;
+                        }
+                    }, 200);
+                } catch (error) {
+                    // If there's an error, just clean up the oscillator
+                    activeOscillators[index] = null;
+                    startTimes[index] = 0;
+                }
+            }
+        }
+
+        function isPointInCircle(x, y, circleX, circleY) {
+            const radius = 25;
+            const dx = x - circleX;
+            const dy = y - circleY;
+            return dx * dx + dy * dy <= radius * radius;
+        }
+
+        function drawCircle(x, y, colorIndex) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Calculate pulse effect
+            let pulseScale = 1;
+            if (activeOscillators[colorIndex]) {
+                const currentTime = audioContext.currentTime;
+                const elapsed = currentTime - startTimes[colorIndex];
+                const progress = Math.min(elapsed / SOUND_DURATION, 1);
+                pulseScale = 1 + Math.sin(progress * Math.PI) * 0.3;
+            }
+
+            // Draw circle
+            ctx.beginPath();
+            ctx.arc(0, 0, 25 * pulseScale, 0, Math.PI * 2);
+            ctx.fillStyle = colors[colorIndex];
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // Check for circle intersections
+        function checkIntersections() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 200;
+
+            let foundCircle = false;
+            // Check each circle for intersection
+            for (let i = 0; i < numCircles; i++) {
+                const angle = (i / numCircles) * Math.PI * 2 + rotation;
+                const circleX = centerX + Math.cos(angle) * radius;
+                const circleY = centerY + Math.sin(angle) * radius;
+
+                if (isPointInCircle(cursorX, cursorY, circleX, circleY)) {
+                    if (lastHoveredCircle !== i) {
+                        // Stop previous sound if it exists
+                        if (lastHoveredCircle !== -1) {
+                            stopSound(lastHoveredCircle);
+                        }
+                        // Play new sound
+                        playSound(frequencies[i], i);
+                        lastHoveredCircle = i;
+                    } else if (!activeOscillators[i]) {
+                        // If still intersecting and no sound is playing, play it again
+                        playSound(frequencies[i], i);
+                    }
+                    foundCircle = true;
+                    break;
+                }
+            }
+
+            // If not intersecting with any circle, stop the last sound
+            if (!foundCircle && lastHoveredCircle !== -1) {
+                stopSound(lastHoveredCircle);
+                lastHoveredCircle = -1;
+            }
+        }
+
+        function animate() {
+            // Clear canvas
+            ctx.fillStyle = 'hsl(235, 100%, 75%)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Center of the canvas
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 200;
+
+            // Draw circles in a circle
+            for (let i = 0; i < numCircles; i++) {
+                const angle = (i / numCircles) * Math.PI * 2 + rotation;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                drawCircle(x, y, i);
+            }
+
+            // Check for intersections
+            checkIntersections();
+
+            rotation += 0.02;
+            requestAnimationFrame(animate);
+        }
+
+        // Record button functionality
+        recordButton.addEventListener('click', () => {
+            if (!isRecording) {
+                // Start recording
+                isRecording = true;
+                recordedSequence = [];
+                recordingStartTime = audioContext.currentTime;
+                recordButton.textContent = 'Stop Recording';
+                recordButton.classList.add('recording');
+                playButton.disabled = true;
+            } else {
+                // Stop recording
+                isRecording = false;
+                recordButton.textContent = 'Record';
+                recordButton.classList.remove('recording');
+                playButton.disabled = false;
+            }
+        });
+
+        // Play button functionality
+        playButton.addEventListener('click', () => {
+            if (recordedSequence.length === 0) return;
+
+            // Disable buttons during playback
+            recordButton.disabled = true;
+            playButton.disabled = true;
+
+            // Play the recorded sequence
+            recordedSequence.forEach((note, index) => {
+                setTimeout(() => {
+                    playSound(frequencies[note.index], note.index);
+                }, note.timestamp * 1000);
+            });
+
+            // Re-enable buttons after playback
+            setTimeout(() => {
+                recordButton.disabled = false;
+                playButton.disabled = false;
+            }, recordedSequence[recordedSequence.length - 1].timestamp * 1000 + 1000);
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html> 
