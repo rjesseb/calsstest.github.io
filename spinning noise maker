@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Spinning Arrows</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: white;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size
+        canvas.width = 400;
+        canvas.height = 400;
+
+        // Number of arrows
+        const numArrows = 8;
+        let rotation = 0;
+
+        // Array of colors for the arrows
+        const colors = [
+            '#FF0000', // Red
+            '#00FF00', // Green
+            '#0000FF', // Blue
+            '#FFA300', // Orange
+            '#800080', // Purple
+            '#FFC0CB', // Pink
+            '#00FFFF', // Cyan
+            '#FFD700'  // Gold
+        ];
+
+        // Frequencies for each color (in Hz)
+        const frequencies = [
+            440, // Red - A4
+            494, // Green - B4
+            523, // Blue - C5
+            587, // Orange - D5
+            659, // Purple - E5
+            698, // Pink - F5
+            784, // Cyan - G5
+            880   // Gold - A5
+        ];
+
+        // Audio context for sound generation
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Keep track of active oscillators and their start times
+        const activeOscillators = new Array(numArrows).fill(null);
+        const startTimes = new Array(numArrows).fill(0);
+        let lastHoveredArrow = -0.5;
+
+        // Sound duration in seconds
+        const SOUND_DURATION = 0.25;
+
+        function playSound(frequency, index) {
+            // Stop any existing sound for this arrow
+            if (activeOscillators[index]) {
+                activeOscillators[index].stop();
+                activeOscillators[index] = null;
+            }
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            
+            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+            
+            oscillator.start();
+            activeOscillators[index] = oscillator;
+            startTimes[index] = audioContext.currentTime;
+
+            // Stop the sound after SOUND_DURATION seconds
+            setTimeout(() => {
+                if (activeOscillators[index] === oscillator) {
+                    oscillator.stop();
+                    activeOscillators[index] = null;
+                    startTimes[index] = 0;
+                }
+            }, SOUND_DURATION * 1000);
+        }
+
+        function stopSound(index) {
+            if (activeOscillators[index]) {
+                const gainNode = activeOscillators[index].gain;
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                setTimeout(() => {
+                    activeOscillators[index].stop();
+                    activeOscillators[index] = null;
+                    startTimes[index] = 0;
+                }, 200);
+            }
+        }
+
+        function isPointInArrow(x, y, arrowX, arrowY, angle) {
+            // Transform point to arrow's local coordinate system
+            const dx = x - arrowX;
+            const dy = y - arrowY;
+            const rotatedX = dx * Math.cos(-angle) - dy * Math.sin(-angle);
+            const rotatedY = dx * Math.sin(-angle) + dy * Math.cos(-angle);
+            
+            // Check if point is within arrow bounds
+            return rotatedX >= -20 && rotatedX <= 20 && 
+                   rotatedY >= -10 && rotatedY <= 10;
+        }
+
+        function drawProgressCircle(x, y, progress, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Draw background circle
+            ctx.beginPath();
+            ctx.arc(0, 0, 25, 0, Math.PI * 2);
+            ctx.strokeStyle = '#eee';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Draw progress arc
+            ctx.beginPath();
+            ctx.arc(0, 0, 25, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * progress));
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        function drawArrow(x, y, angle, colorIndex) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            // Draw progress circle if sound is playing
+            if (activeOscillators[colorIndex]) {
+                const currentTime = audioContext.currentTime;
+                const elapsed = currentTime - startTimes[colorIndex];
+                const progress = Math.min(elapsed / SOUND_DURATION, 1);
+                drawProgressCircle(0, 0, progress, colors[colorIndex]);
+            }
+
+            // Draw arrow
+            ctx.beginPath();
+            ctx.moveTo(-20, -10);
+            ctx.lineTo(20, 0);
+            ctx.lineTo(-20, 10);
+            ctx.strokeStyle = colors[colorIndex];
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function animate() {
+            // Clear canvas
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Center of the canvas
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 100;
+
+            // Draw arrows in a circle
+            for (let i = 0; i < numArrows; i++) {
+                const angle = (i / numArrows) * Math.PI * 2 + rotation;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                drawArrow(x, y, angle, i);
+            }
+
+            rotation += 0.01;
+            requestAnimationFrame(animate);
+        }
+
+        // Handle mouse move events
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 100;
+
+            let foundArrow = false;
+            // Check each arrow for hover
+            for (let i = 0; i < numArrows; i++) {
+                const angle = (i / numArrows) * Math.PI * 2 + rotation;
+                const arrowX = centerX + Math.cos(angle) * radius;
+                const arrowY = centerY + Math.sin(angle) * radius;
+
+                if (isPointInArrow(x, y, arrowX, arrowY, angle)) {
+                    if (lastHoveredArrow !== i) {
+                        // Stop previous sound if it exists
+                        if (lastHoveredArrow !== -1) {
+                            stopSound(lastHoveredArrow);
+                        }
+                        // Play new sound
+                        playSound(frequencies[i], i);
+                        lastHoveredArrow = i;
+                    }
+                    foundArrow = true;
+                    break;
+                }
+            }
+
+            // If not hovering over any arrow, stop the last sound
+            if (!foundArrow && lastHoveredArrow !== -1) {
+                stopSound(lastHoveredArrow);
+                lastHoveredArrow = -1;
+            }
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html> 
