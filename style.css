@@ -1,0 +1,52 @@
+body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: hsl(235, 100%, 75%); /* Dark blue background */
+}
+
+canvas {
+    cursor: pointer;
+    margin-bottom: 20px;
+    background-color: hsl(235, 100%, 75%);
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    background-color: white;
+    color: #192163;
+    transition: all 0.3s;
+    font-weight: bold;
+}
+
+button:hover {
+    background-color: #e8eaf6;
+    transform: scale(1.05);
+}
+
+button.recording {
+    background-color: #ff1744;
+    color: white;
+}
+
+button.recording:hover {
+    background-color: #ff4569;
+}
+
+button:disabled {
+    background-color: #9fa8da;
+    cursor: not-allowed;
+    transform: none;
+} 
