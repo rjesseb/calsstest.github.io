@@ -208,9 +208,13 @@
                 }
             }
 
-            // If not intersecting with any circle, stop the last sound
+            // If not intersecting with any circle, stop the last sound immediately
             if (!foundCircle && lastHoveredCircle !== -1) {
-                stopSound(lastHoveredCircle);
+                if (activeOscillators[lastHoveredCircle]) {
+                    activeOscillators[lastHoveredCircle].stop();
+                    activeOscillators[lastHoveredCircle] = null;
+                    startTimes[lastHoveredCircle] = 0;
+                }
                 lastHoveredCircle = -1;
             }
         }
